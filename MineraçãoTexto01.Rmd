@@ -1,0 +1,119 @@
+
+# Análise de Sentimento em Avaliações de Consumidores
+
+O objetivo deste trabalho é aplicar técnicas de mineração de texto e análise de sentimento para avaliar a opinião dos consumidores sobre produtos ou serviços. O dataset utilizado pode ser encontrado em: https://www.kaggle.com/datasets/kaggle/us-consumer-finance-complaints.
+
+O conjunto de dados "US Consumer Finance Complaints" contém reclamações dos consumidores sobre produtos e serviços financeiros nos Estados Unidos, juntamente com as respostas das empresas correspondentes. Essas reclamações são coletadas pelo Consumer Financial Protection Bureau (CFPB) e são disponibilizadas ao público após a resposta da empresa ou após 15 dias, o que ocorrer primeiro. Ao adicionar suas vozes, os consumidores contribuem para melhorar o mercado financeiro. Este conjunto de dados oferece uma visão valiosa das preocupações dos consumidores e das práticas das empresas no setor financeiro dos Estados Unidos.
+
+# Instalação e carregamento de pacotes necessários
+
+```{r, results=FALSE, warnings=FALSE, message=FALSE}
+#instalação
+#install.packages("tidyverse")
+#install.packages("tm")
+#install.packages("SnowballC")
+#install.packages("wordcloud")
+#install.packages("sentimentr")
+#install.packages("textTinyR")
+#install.packages("tidytext")
+#install.packages("textdata")
+#install.packages("dplyr")
+#install.packages("ggplot2")
+#install.packages("kableExtra")
+#bibliotecas
+library(tidyverse)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(sentimentr)
+library(dplyr)
+library(ggplot2)
+library(textTinyR)
+library(tidytext)
+library(textdata)
+library(kableExtra)
+```
+
+# Importação e Pré-processamento
+
+```{r}
+
+complaints <- read.csv("consumer_complaints.csv", stringsAsFactors = FALSE)
+complaints_narrative_vazia <- subset(complaints, consumer_complaint_narrative == "")
+complaints <- complaints[-which(complaints$consumer_complaint_narrative == ""), ]
+```
+
+# Criação do corpus de texto
+
+```{r}
+consumer_corpus <- VCorpus(VectorSource(complaints$consumer_complaint_narrative))
+preprocess_text <- function(corpus) {
+  corpus <- tm_map(corpus, content_transformer(tolower))
+  corpus <- tm_map(corpus, removePunctuation)
+  #corpus <- tm_map(corpus, wordTokenize)
+  corpus <- tm_map(corpus, removeNumbers)
+  corpus <- tm_map(corpus, stripWhitespace)
+  return(corpus)}
+consumer_corpus <- preprocess_text(consumer_corpus)
+consumer_corpus
+```
+
+# Distribuição de Reclamações por Produto
+
+```{r}
+complaints_by_product <- complaints %>%
+  count(product) %>%
+  arrange(desc(n))
+ggplot(complaints_by_product, aes(x = reorder(product, -n), y = n)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Distribuição de Reclamações por Produto",
+       x = "Produto", y = "Número de Reclamações") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme_minimal()
+```
+
+O gráfico acima mostra a distribuição de reclamações agrupadas por produto da base de dados.
+
+# Distribuição de Reclamações por Empresa (Top 10)
+
+```{r}
+complaints_by_company <- complaints %>% count(company) %>% arrange(desc(n)) %>%
+  top_n(10)
+ggplot(complaints_by_company, aes(x = reorder(company, -n), y = n, fill = company)) +
+  geom_bar(stat = "identity", fill = "skyblue") +
+  labs(title = "Distribuição de Reclamações por Empresa (Top 10)",
+       x = "Empresa", y = "Número de Reclamações") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(legend.position = "none")
+```
+
+O gráfico acima está representando as 10 maiores empresas por reclamações no _dataset_.
+
+# Análise de Sentimento
+
+```{r}
+library(tidytext)
+afinn <- get_sentiments("afinn")
+dtm_cor <- DocumentTermMatrix(consumer_corpus)
+voc <- intersect(Terms(dtm_cor), afinn$word)
+dtm_dic <- DocumentTermMatrix(x = consumer_corpus, control =  list(dictionary = voc))
+afinn <- subset(afinn, word %in% voc)
+lex <- data.frame(term = voc, y = afinn$value)
+m <- as.matrix(dtm_dic)
+pol <- (m %*% cbind(lex$y))/rowSums(m)
+fra <- (substr(complaints$consumer_complaint_narrative, start = 1, stop = 60))
+df <- data.frame(pol, fra)
+head(df)
+```
+
+# Densidade da Polaridade do Sentimento
+
+```{r, warning=FALSE}
+ggplot(df, aes(x = pol)) +
+  geom_density(fill = "skyblue", color = "blue") +
+  labs(title = "Densidade da Polaridade do Sentimento",
+       x = "Polaridade",
+       y = "Densidade") +
+  theme_minimal()
+```
+
+O gráfico acima mostra a distribuição da polaridade do sentimento atribuído a cada uma das reclamações da base de dados. Como visto acima, a polaridade se concentra negativamente.
